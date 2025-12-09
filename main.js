@@ -1,7 +1,6 @@
-// API Configuration
+
 const API_URL = 'https://dummyjson.com/todos';
 
-// DOM Elements
 const todoList = document.getElementById('todoList');
 const addBtn = document.getElementById('addBtn');
 const todoModal = document.getElementById('todoModal');
@@ -13,19 +12,18 @@ const filterBtns = document.querySelectorAll('.filter-btn');
 const themeToggle = document.getElementById('themeToggle');
 const modalTitle = document.getElementById('modalTitle');
 
-// State
 let todos = [];
 let currentFilter = 'all';
 let editingTodoId = null;
 
-// Initialize
+
 document.addEventListener('DOMContentLoaded', () => {
     loadTodos();
     initializeEventListeners();
     loadTheme();
 });
 
-// Event Listeners
+
 function initializeEventListeners() {
     addBtn.addEventListener('click', openAddModal);
     saveBtn.addEventListener('click', saveTodo);
@@ -42,14 +40,12 @@ function initializeEventListeners() {
         });
     });
 
-    // Close modal when clicking outside
     todoModal.addEventListener('click', (e) => {
         if (e.target === todoModal) {
             closeModal();
         }
     });
 
-    // Enter key to save
     todoInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             saveTodo();
@@ -57,12 +53,36 @@ function initializeEventListeners() {
     });
 }
 
-// API Functions
+function saveTodosToStorage() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+}
+
+function loadTodosFromStorage() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+        todos = JSON.parse(stored);
+        if (todos.length > 0) {
+            nextId = Math.max(...todos.map(t => t.id)) + 1;
+        }
+        return true;
+    }
+    return false;
+}
+
 async function loadTodos() {
     try {
+        if (loadTodosFromStorage()) {
+            renderTodos();
+            return;
+        }
+        
         const response = await fetch(API_URL);
         const data = await response.json();
         todos = data.todos || [];
+        if (todos.length > 0) {
+            nextId = Math.max(...todos.map(t => t.id)) + 1;
+        }
+        saveTodosToStorage();
         renderTodos();
     } catch (error) {
         console.error('Error loading todos:', error);
@@ -70,72 +90,33 @@ async function loadTodos() {
     }
 }
 
-async function createTodo(title) {
-    try {
-        const response = await fetch(API_URL + '/add', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                todo: title,
-                completed: false,
-                userId: 1,
-            }),
-        });
+function createTodo(title) {
+    const newTodo = {
+        id: nextId++,
+        todo: title,
+        completed: false,
+        userId: 1
+    };
+    
+    todos.push(newTodo);
+    saveTodosToStorage();
+    renderTodos();
+    return newTodo;
+}
 
-        if (!response.ok) {
-            throw new Error('Failed to create todo');
-        }
-
-        const newTodo = await response.json();
-        await loadTodos();
-        return newTodo;
-    } catch (error) {
-        console.error('Error creating todo:', error);
-        showError('Failed to create todo');
-        throw error;
+function updateTodo(id, updates) {
+    const todo = todos.find(t => t.id === id);
+    if (todo) {
+        Object.assign(todo, updates);
+        saveTodosToStorage();
+        renderTodos();
     }
 }
 
-async function updateTodo(id, updates) {
-    try {
-        const response = await fetch(API_URL + '/' + id, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(updates),
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to update todo');
-        }
-
-        await loadTodos();
-    } catch (error) {
-        console.error('Error updating todo:', error);
-        showError('Failed to update todo');
-        throw error;
-    }
-}
-
-async function deleteTodo(id) {
-    try {
-        const response = await fetch(API_URL + '/' + id, {
-            method: 'DELETE',
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to delete todo');
-        }
-
-        await loadTodos();
-    } catch (error) {
-        console.error('Error deleting todo:', error);
-        showError('Failed to delete todo');
-        throw error;
-    }
+function deleteTodo(id) {
+    todos = todos.filter(t => t.id !== id);
+    saveTodosToStorage();
+    renderTodos();
 }
 
 // UI Functions
@@ -193,7 +174,7 @@ function openEditModal(id) {
     todoInput.focus();
 }
 
-async function saveTodo() {
+function saveTodo() {
     const title = todoInput.value.trim();
 
     if (!title) {
@@ -201,14 +182,12 @@ async function saveTodo() {
         return;
     }
 
-    try {
-        if (editingTodoId) {
-            await updateTodo(editingTodoId, { todo: title });
-        } else {
-            await createTodo(title);
-        }
-        closeModal();
-    } catch (error) { }
+    if (editingTodoId) {
+        updateTodo(editingTodoId, { todo: title });
+    } else {
+        createTodo(title);
+    }
+    closeModal();
 }
 
 function openAddModal() {
@@ -225,32 +204,14 @@ function closeModal() {
     editingTodoId = null;
 }
 
-async function toggleTodoComplete(id, completed) {
+function toggleTodoComplete(id, completed) {
     console.log('Toggle called:', id, 'New completed state:', completed);
-    try {
-        // Update local state immediately for better UX
-        const todo = todos.find(t => t.id === id);
-        if (todo) {
-            todo.completed = completed;
-            console.log('Updated todo in local state:', todo);
-            renderTodos(); // Re-render immediately
-        }
-
-        // Then sync with API
-        await updateTodo(id, { completed });
-    } catch (error) {
-        // Error already handled in updateTodo
-        console.error('Toggle error:', error);
-    }
+    updateTodo(id, { completed });
 }
 
-async function handleDeleteTodo(id) {
+function handleDeleteTodo(id) {
     if (confirm('Are you sure you want to delete this todo?')) {
-        try {
-            await deleteTodo(id);
-        } catch (error) {
-            // Error already handled in deleteTodo
-        }
+        deleteTodo(id);
     }
 }
 
